@@ -1,11 +1,16 @@
 <?php
 /**
  * Plugin Name: Locker System
- * Description: A WordPress plugin to create and manage lockers with city/country configuration, email confirmation, and protected listing.
- * Version: 2.0
+ * Plugin URI: https://github.com/kenaldertech/wordpress-locker-manager_plugin
+ * Description: A plugin to manage lockers with customizable countries, cities, and email confirmation.
+ * Version: 1.0
  * Author: Kenneth (kenaldertech)
+ * Author URI: https://github.com/kenaldertech
  * License: GPL2
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: locker-system
  */
+
 
 if (!defined('ABSPATH')) exit;
 
