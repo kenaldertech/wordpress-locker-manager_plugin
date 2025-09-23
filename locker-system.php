@@ -1,9 +1,10 @@
 <?php
 /**
  * Plugin Name: Locker System
- * Description: A plugin to create and manage lockers with email confirmation.
- * Version: 1.1
- * Author: Kenneth Alvarenga
+ * Description: A WordPress plugin to create and manage lockers with city/country configuration, email confirmation, and protected listing.
+ * Version: 2.0
+ * Author: Kenneth (kenaldertech)
+ * License: GPL2
  */
 
 if (!defined('ABSPATH')) exit;
@@ -25,7 +26,9 @@ class LockerSystem {
         $sql = "CREATE TABLE $table (
             id INT AUTO_INCREMENT PRIMARY KEY,
             locker_number VARCHAR(20) NOT NULL,
+            country VARCHAR(50) DEFAULT 'Honduras',
             city VARCHAR(50) NOT NULL,
+            address VARCHAR(255) DEFAULT '',
             name VARCHAR(100),
             email VARCHAR(100),
             phone VARCHAR(30),
@@ -37,50 +40,70 @@ class LockerSystem {
         dbDelta($sql);
     }
 
-   public function render_form() {
-    if (isset($_GET['success']) && $_GET['success'] == 1) {
-        return '
-        <div style="text-align:center; padding:30px; background:#f0fff0; border:2px solid #28a745; border-radius:10px; margin:20px auto; max-width:600px;">
-            <h2 style="color:#28a745; font-size:28px;">✅ Casillero creado con Éxito</h2>
-            <p style="font-size:20px;">Te enviamos un mensaje a tu correo electrónico para activar tu casillero.</p>
-            <p style="font-size:18px;">Luego de activarlo ya podrás utilizarlo.</p>
-        </div>';
+    public function render_form() {
+        if (isset($_GET['success']) && $_GET['success'] == 1) {
+            return '
+            <div style="text-align:center; padding:30px; background:#f0fff0; border:2px solid #28a745; border-radius:10px; margin:20px auto; max-width:600px;">
+                <h2 style="color:#28a745; font-size:28px;">✅ Casillero creado con éxito</h2>
+                <p style="font-size:20px;">Te enviamos un mensaje a tu correo electrónico para activar tu casillero.</p>
+                <p style="font-size:18px;">Luego de activarlo ya podrás utilizarlo.</p>
+            </div>';
+        }
+
+        $settings = get_option('locker_system_settings', [
+            'countries' => 'Honduras',
+            'cities' => '1:San Pedro Sula,2:Tegucigalpa,3:Otra ciudad',
+            'enable_address' => 0
+        ]);
+
+        $countries = array_map('trim', explode(',', $settings['countries']));
+        $cities = array_map('trim', explode(',', $settings['cities']));
+
+        ob_start(); ?>
+        <div style="max-width:600px; margin:20px auto; padding:20px; border:2px solid #ccc; border-radius:10px; background:#fafafa;">
+            <form method="post" style="font-size:18px;">
+                <label><strong>País:</strong></label><br>
+                <select name="country" required style="width:100%; padding:8px; margin-bottom:15px;">
+                    <?php foreach ($countries as $c): ?>
+                        <option value="<?php echo esc_attr($c); ?>"><?php echo esc_html($c); ?></option>
+                    <?php endforeach; ?>
+                </select><br>
+
+                <label><strong>Destino (Ciudad):</strong></label><br>
+                <select name="city" required style="width:100%; padding:8px; margin-bottom:15px;">
+                    <?php foreach ($cities as $c): 
+                        list($code, $name) = explode(':', $c, 2); ?>
+                        <option value="<?php echo esc_attr($code); ?>"><?php echo esc_html($name); ?></option>
+                    <?php endforeach; ?>
+                </select><br>
+
+                <?php if (!empty($settings['enable_address'])): ?>
+                <label><strong>Dirección:</strong></label><br>
+                <input type="text" name="address" style="width:100%; padding:8px; margin-bottom:15px;"><br>
+                <?php endif; ?>
+
+                <label><strong>Nombre:</strong></label><br>
+                <input type="text" name="name" required style="width:100%; padding:8px; margin-bottom:15px;"><br>
+
+                <label><strong>Correo electrónico:</strong></label><br>
+                <input type="email" name="email" required style="width:100%; padding:8px; margin-bottom:15px;"><br>
+
+                <label><strong>Teléfono:</strong></label><br>
+                <input type="text" name="phone" required style="width:100%; padding:8px; margin-bottom:15px;"><br>
+
+                <div style="background:#eef2f7; padding:10px; border:1px solid #ccc; border-radius:8px; margin-bottom:15px;">
+                    <label style="font-size:16px;">
+                        <input type="checkbox" name="notabot" value="1" required> No soy un bot
+                    </label>
+                </div>
+
+                <input type="submit" name="locker_submit" value="Crear Casillero"
+                    style="background:#0073aa; color:#fff; padding:12px 20px; font-size:18px; border:none; border-radius:8px; cursor:pointer;">
+            </form>
+        </div>
+        <?php
+        return ob_get_clean();
     }
-
-    ob_start(); ?>
-    <div style="max-width:600px; margin:20px auto; padding:20px; border:2px solid #ccc; border-radius:10px; background:#fafafa;">
-        <form method="post" style="font-size:18px;">
-            <label><strong>Destino:</strong></label><br>
-            <select name="city" required style="width:100%; padding:8px; font-size:16px; margin-bottom:15px;">
-                <option value="1">San Pedro Sula</option>
-                <option value="2">Tegucigalpa</option>
-                <option value="3">Otra ciudad</option>
-            </select><br>
-
-            <label><strong>Nombre:</strong></label><br>
-            <input type="text" name="name" required style="width:100%; padding:8px; font-size:16px; margin-bottom:15px;"><br>
-
-            <label><strong>Correo electrónico:</strong></label><br>
-            <input type="email" name="email" required style="width:100%; padding:8px; font-size:16px; margin-bottom:15px;"><br>
-
-            <label><strong>Teléfono:</strong></label><br>
-            <input type="text" name="phone" required style="width:100%; padding:8px; font-size:16px; margin-bottom:15px;"><br>
-
-            <div style="background:#eef2f7; padding:10px; border:1px solid #ccc; border-radius:8px; margin-bottom:15px;">
-                <label style="font-size:16px;">
-                    <input type="checkbox" name="notabot" value="1" required>
-                    No soy un bot
-                </label>
-            </div>
-
-            <input type="submit" name="locker_submit" value="Crear Casillero"
-                style="background:#0073aa; color:#fff; padding:12px 20px; font-size:18px; border:none; border-radius:8px; cursor:pointer;">
-        </form>
-    </div>
-    <?php
-    return ob_get_clean();
-}
-
 
     public function process_form() {
         if (isset($_POST['locker_submit'])) {
@@ -91,12 +114,14 @@ class LockerSystem {
             global $wpdb;
             $table = $wpdb->prefix . "lockers";
 
+            $country = sanitize_text_field($_POST['country']);
             $city = sanitize_text_field($_POST['city']);
+            $address = isset($_POST['address']) ? sanitize_text_field($_POST['address']) : '';
             $name = sanitize_text_field($_POST['name']);
             $email = sanitize_email($_POST['email']);
             $phone = sanitize_text_field($_POST['phone']);
 
-            // Obtener último consecutivo de esa ciudad
+            // Generar número único
             $last = $wpdb->get_var("SELECT locker_number FROM $table WHERE city='$city' ORDER BY id DESC LIMIT 1");
             $base = 100501;
             if ($last) {
@@ -107,12 +132,13 @@ class LockerSystem {
             }
             $locker_number = $city . $new_number;
 
-            // Generar key de activación
             $activation_key = md5(uniqid(rand(), true));
 
             $wpdb->insert($table, [
                 'locker_number' => $locker_number,
+                'country' => $country,
                 'city' => $city,
+                'address' => $address,
                 'name' => $name,
                 'email' => $email,
                 'phone' => $phone,
@@ -120,18 +146,17 @@ class LockerSystem {
                 'activation_key' => $activation_key
             ]);
 
-            // Enviar correo
-            $activation_link = add_query_arg([
-                'locker_activation' => $activation_key
-            ], home_url());
-
+            // Enviar email
+            $activation_link = add_query_arg(['locker_activation' => $activation_key], home_url());
             $subject = "Confirma tu casillero";
             $message = "Hola $name,\n\n".
                        "Tu casillero es: $locker_number\n".
-                       "Destino: ".$this->city_name($city)."\n".
+                       "País: $country\n".
+                       "Ciudad: $city\n".
+                       ($address ? "Dirección: $address\n" : "").
                        "Correo: $email\n".
                        "Teléfono: $phone\n\n".
-                       "Por favor confirma tu casillero haciendo clic en el siguiente enlace:\n$activation_link";
+                       "Confirma tu casillero aquí:\n$activation_link";
 
             wp_mail($email, $subject, $message);
 
@@ -148,24 +173,18 @@ class LockerSystem {
             $locker = $wpdb->get_row("SELECT * FROM $table WHERE activation_key='$key'");
             if ($locker) {
                 $wpdb->update($table, ['status' => 1], ['activation_key' => $key]);
-                wp_die("Casillero activado con éxito. Ya puedes usarlo.");
+                wp_die("✅ Casillero activado con éxito. Ya puedes usarlo.");
             } else {
                 wp_die("Enlace inválido o ya activado.");
             }
         }
     }
 
-    private function city_name($city) {
-        switch ($city) {
-            case "1": return "San Pedro Sula";
-            case "2": return "Tegucigalpa";
-            case "3": return "Otra ciudad";
-            default: return "Desconocida";
-        }
-    }
-
     public function protected_page() {
-        $settings = get_option('locker_system_settings', ['user' => 'admin', 'pass' => '1234']);
+        $settings = get_option('locker_system_settings', [
+            'user' => 'admin',
+            'pass' => '1234'
+        ]);
 
         if (!isset($_SERVER['PHP_AUTH_USER'])) {
             header('WWW-Authenticate: Basic realm="Locker System"');
@@ -186,13 +205,15 @@ class LockerSystem {
 
         ob_start();
         echo "<h2>Listado de Casilleros</h2>
-        <table border='1' cellpadding='6'>
-            <tr><th>Nombre</th><th>Casillero</th><th>Destino</th><th>Correo</th><th>Teléfono</th></tr>";
+        <table border='1' cellpadding='6' style='border-collapse:collapse;'>
+            <tr><th>Nombre</th><th>Casillero</th><th>País</th><th>Destino</th><th>Dirección</th><th>Correo</th><th>Teléfono</th></tr>";
         foreach ($results as $row) {
             echo "<tr>
                 <td>{$row->name}</td>
                 <td>{$row->locker_number}</td>
-                <td>".$this->city_name($row->city)."</td>
+                <td>{$row->country}</td>
+                <td>{$row->city}</td>
+                <td>{$row->address}</td>
                 <td>{$row->email}</td>
                 <td>{$row->phone}</td>
             </tr>";
@@ -215,21 +236,46 @@ class LockerSystem {
         if (isset($_POST['save_settings'])) {
             update_option('locker_system_settings', [
                 'user' => sanitize_text_field($_POST['user']),
-                'pass' => sanitize_text_field($_POST['pass'])
+                'pass' => sanitize_text_field($_POST['pass']),
+                'countries' => sanitize_text_field($_POST['countries']),
+                'cities' => sanitize_text_field($_POST['cities']),
+                'enable_address' => isset($_POST['enable_address']) ? 1 : 0
             ]);
             echo "<div class='updated'><p>Guardado!</p></div>";
         }
 
-        $settings = get_option('locker_system_settings', ['user' => 'admin', 'pass' => '1234']);
+        $settings = get_option('locker_system_settings', [
+            'user' => 'admin',
+            'pass' => '1234',
+            'countries' => 'Honduras',
+            'cities' => '1:San Pedro Sula,2:Tegucigalpa,3:Otra ciudad',
+            'enable_address' => 0
+        ]);
         ?>
         <div class="wrap">
             <h2>Locker System Settings</h2>
             <form method="post">
-                <label>Usuario acceso:</label>
+                <h3>Access</h3>
+                <label>User:</label>
                 <input type="text" name="user" value="<?php echo esc_attr($settings['user']); ?>"><br><br>
-                <label>Clave acceso:</label>
+                <label>Password:</label>
                 <input type="text" name="pass" value="<?php echo esc_attr($settings['pass']); ?>"><br><br>
-                <input type="submit" name="save_settings" value="Guardar">
+
+                <h3>Countries</h3>
+                <textarea name="countries" rows="2" style="width:100%;"><?php echo esc_textarea($settings['countries']); ?></textarea>
+                <p>Separate with commas. Example: Honduras,El Salvador,Guatemala</p>
+
+                <h3>Cities</h3>
+                <textarea name="cities" rows="3" style="width:100%;"><?php echo esc_textarea($settings['cities']); ?></textarea>
+                <p>Format: code:Name separated by commas. Example: 1:San Pedro Sula,2:Tegucigalpa,3:Otra ciudad</p>
+
+                <h3>Form Options</h3>
+                <label>
+                    <input type="checkbox" name="enable_address" value="1" <?php checked($settings['enable_address'], 1); ?>>
+                    Enable Address field in form
+                </label><br><br>
+
+                <input type="submit" name="save_settings" value="Save Settings" class="button button-primary">
             </form>
         </div>
         <?php
