@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Locker System
- * Description: A WordPress plugin to create and manage lockers with city/country configuration, email confirmation, and protected listing.
- * Version: 2.1
+ * Description: A WordPress plugin to create and manage lockers with countries, cities, email confirmation, and protected listing.
+ * Version: 2.3
  * Author: Kenneth (kenaldertech)
  * License: GPL2
  * Text Domain: locker-system
@@ -22,12 +22,10 @@ class LockerSystem {
         add_action('init', [$this, 'check_activation_link']);
     }
 
-    /** Load translations */
     public function load_textdomain() {
         load_plugin_textdomain('locker-system', false, dirname(plugin_basename(__FILE__)) . '/languages');
     }
 
-    /** Create DB table */
     public function create_table() {
         global $wpdb;
         $table = $wpdb->prefix . "lockers";
@@ -49,7 +47,6 @@ class LockerSystem {
         dbDelta($sql);
     }
 
-    /** Locker creation form */
     public function render_form() {
         if (isset($_GET['success']) && $_GET['success'] == 1) {
             return '
@@ -61,30 +58,27 @@ class LockerSystem {
         }
 
         $settings = get_option('locker_system_settings', [
-            'countries' => 'Honduras',
-            'cities' => '1:San Pedro Sula,2:Tegucigalpa,3:Other city',
+            'countries_cities' => '{"Honduras":{"1":"San Pedro Sula","2":"Tegucigalpa","3":"Otra ciudad"}}',
             'enable_address' => 0
         ]);
 
-        $countries = array_map('trim', explode(',', $settings['countries']));
-        $cities = array_map('trim', explode(',', $settings['cities']));
+        $data = json_decode($settings['countries_cities'], true);
+        if (!$data) $data = [];
 
         ob_start(); ?>
         <div style="max-width:600px; margin:20px auto; padding:20px; border:2px solid #ccc; border-radius:10px; background:#fafafa;">
             <form method="post" style="font-size:18px;">
                 <label><strong><?php _e('Country', 'locker-system'); ?>:</strong></label><br>
-                <select name="country" required style="width:100%; padding:8px; margin-bottom:15px;">
-                    <?php foreach ($countries as $c): ?>
-                        <option value="<?php echo esc_attr($c); ?>"><?php echo esc_html($c); ?></option>
+                <select id="country" name="country" required style="width:100%; padding:8px; margin-bottom:15px;">
+                    <option value=""><?php _e('Select a country', 'locker-system'); ?></option>
+                    <?php foreach ($data as $country => $cities): ?>
+                        <option value="<?php echo esc_attr($country); ?>"><?php echo esc_html($country); ?></option>
                     <?php endforeach; ?>
                 </select><br>
 
-                <label><strong><?php _e('Destination City', 'locker-system'); ?>:</strong></label><br>
-                <select name="city" required style="width:100%; padding:8px; margin-bottom:15px;">
-                    <?php foreach ($cities as $c): 
-                        list($code, $name) = explode(':', $c, 2); ?>
-                        <option value="<?php echo esc_attr($code); ?>"><?php echo esc_html($name); ?></option>
-                    <?php endforeach; ?>
+                <label><strong><?php _e('City', 'locker-system'); ?>:</strong></label><br>
+                <select id="city" name="city" required style="width:100%; padding:8px; margin-bottom:15px;">
+                    <option value=""><?php _e('Select a city', 'locker-system'); ?></option>
                 </select><br>
 
                 <?php if (!empty($settings['enable_address'])): ?>
@@ -111,11 +105,29 @@ class LockerSystem {
                     style="background:#0073aa; color:#fff; padding:12px 20px; font-size:18px; border:none; border-radius:8px; cursor:pointer;">
             </form>
         </div>
+
+        <script>
+        const data = <?php echo json_encode($data); ?>;
+        const countrySelect = document.getElementById('country');
+        const citySelect = document.getElementById('city');
+
+        countrySelect.addEventListener('change', function() {
+            const country = this.value;
+            citySelect.innerHTML = '<option value=""><?php _e('Select a city', 'locker-system'); ?></option>';
+            if (data[country]) {
+                for (const code in data[country]) {
+                    let opt = document.createElement('option');
+                    opt.value = code;
+                    opt.textContent = data[country][code];
+                    citySelect.appendChild(opt);
+                }
+            }
+        });
+        </script>
         <?php
         return ob_get_clean();
     }
 
-    /** Process form */
     public function process_form() {
         if (isset($_POST['locker_submit'])) {
             if (!isset($_POST['notabot'])) {
@@ -132,7 +144,7 @@ class LockerSystem {
             $email = sanitize_email($_POST['email']);
             $phone = sanitize_text_field($_POST['phone']);
 
-            $last = $wpdb->get_var("SELECT locker_number FROM $table WHERE city='$city' ORDER BY id DESC LIMIT 1");
+            $last = $wpdb->get_var("SELECT locker_number FROM $table WHERE city='$city' AND country='$country' ORDER BY id DESC LIMIT 1");
             $base = 100501;
             if ($last) {
                 $last_number = intval(substr($last, 1));
@@ -156,28 +168,33 @@ class LockerSystem {
                 'activation_key' => $activation_key
             ]);
 
+            // Get admin custom message
+            $settings = get_option('locker_system_settings');
+            $custom_message = !empty($settings['verification_message']) ? wpautop($settings['verification_message']) : '';
+
             $activation_link = add_query_arg(['locker_activation' => $activation_key], home_url());
             $subject = __('Confirm your locker', 'locker-system');
-            $message = sprintf(
-                __("Hello %s,\n\nYour locker number is: %s\nCountry: %s\nCity: %s\n%sEmail: %s\nPhone: %s\n\nPlease confirm your locker here:\n%s", 'locker-system'),
-                $name,
-                $locker_number,
-                $country,
-                $city,
-                $address ? "Address: $address\n" : "",
-                $email,
-                $phone,
-                $activation_link
-            );
 
-            wp_mail($email, $subject, $message);
+            $message = "<p>" . sprintf(__('Hello %s,', 'locker-system'), $name) . "</p>";
+            $message .= "<p>" . sprintf(__('Your locker number is: %s', 'locker-system'), $locker_number) . "<br>";
+            $message .= __('Country', 'locker-system') . ": $country<br>";
+            $message .= __('City code', 'locker-system') . ": $city<br>";
+            if ($address) $message .= __('Address', 'locker-system') . ": $address<br>";
+            $message .= __('Email', 'locker-system') . ": $email<br>";
+            $message .= __('Phone', 'locker-system') . ": $phone</p>";
+            if ($custom_message) {
+                $message .= "<hr><p>$custom_message</p>";
+            }
+            $message .= "<p><a href='$activation_link'>" . __('Click here to confirm your locker', 'locker-system') . "</a></p>";
+
+            $headers = ['Content-Type: text/html; charset=UTF-8'];
+            wp_mail($email, $subject, $message, $headers);
 
             wp_redirect(add_query_arg('success', '1', $_SERVER['REQUEST_URI']));
             exit;
         }
     }
 
-    /** Check activation */
     public function check_activation_link() {
         if (isset($_GET['locker_activation'])) {
             global $wpdb;
@@ -193,7 +210,6 @@ class LockerSystem {
         }
     }
 
-    /** Protected page */
     public function protected_page() {
         $settings = get_option('locker_system_settings', [
             'user' => 'admin',
@@ -244,7 +260,6 @@ class LockerSystem {
         return ob_get_clean();
     }
 
-    /** Settings page */
     public function add_admin_menu() {
         add_options_page(
             'Locker Settings',
@@ -260,9 +275,9 @@ class LockerSystem {
             update_option('locker_system_settings', [
                 'user' => sanitize_text_field($_POST['user']),
                 'pass' => sanitize_text_field($_POST['pass']),
-                'countries' => sanitize_text_field($_POST['countries']),
-                'cities' => sanitize_text_field($_POST['cities']),
-                'enable_address' => isset($_POST['enable_address']) ? 1 : 0
+                'countries_cities' => stripslashes($_POST['countries_cities']),
+                'enable_address' => isset($_POST['enable_address']) ? 1 : 0,
+                'verification_message' => wp_kses_post($_POST['verification_message'])
             ]);
             echo "<div class='updated'><p>" . __('Saved!', 'locker-system') . "</p></div>";
         }
@@ -270,9 +285,9 @@ class LockerSystem {
         $settings = get_option('locker_system_settings', [
             'user' => 'admin',
             'pass' => '1234',
-            'countries' => 'Honduras',
-            'cities' => '1:San Pedro Sula,2:Tegucigalpa,3:Other city',
-            'enable_address' => 0
+            'countries_cities' => '{"Honduras":{"1":"San Pedro Sula","2":"Tegucigalpa","3":"Otra ciudad"}}',
+            'enable_address' => 0,
+            'verification_message' => ''
         ]);
         ?>
         <div class="wrap">
@@ -284,19 +299,20 @@ class LockerSystem {
                 <label><?php _e('Password', 'locker-system'); ?>:</label>
                 <input type="text" name="pass" value="<?php echo esc_attr($settings['pass']); ?>"><br><br>
 
-                <h3><?php _e('Countries', 'locker-system'); ?></h3>
-                <textarea name="countries" rows="2" style="width:100%;"><?php echo esc_textarea($settings['countries']); ?></textarea>
-                <p><?php _e('Separate with commas. Example: Honduras,El Salvador,Guatemala', 'locker-system'); ?></p>
-
-                <h3><?php _e('Cities', 'locker-system'); ?></h3>
-                <textarea name="cities" rows="3" style="width:100%;"><?php echo esc_textarea($settings['cities']); ?></textarea>
-                <p><?php _e('Format: code:Name separated by commas. Example: 1:San Pedro Sula,2:Tegucigalpa,3:Other', 'locker-system'); ?></p>
+                <h3><?php _e('Countries and Cities', 'locker-system'); ?></h3>
+                <textarea name="countries_cities" rows="10" style="width:100%;"><?php echo esc_textarea($settings['countries_cities']); ?></textarea>
+                <p><?php _e('Enter JSON format. Example:', 'locker-system'); ?><br>
+                <code>{"Honduras":{"1":"San Pedro Sula","2":"Tegucigalpa"},"Guatemala":{"1":"Ciudad de Guatemala"}}</code></p>
 
                 <h3><?php _e('Form Options', 'locker-system'); ?></h3>
                 <label>
                     <input type="checkbox" name="enable_address" value="1" <?php checked($settings['enable_address'], 1); ?>>
                     <?php _e('Enable Address field in form', 'locker-system'); ?>
                 </label><br><br>
+
+                <h3><?php _e('Verification Email Message', 'locker-system'); ?></h3>
+                <textarea name="verification_message" rows="6" style="width:100%;"><?php echo esc_textarea($settings['verification_message']); ?></textarea>
+                <p><?php _e('This message will be added to the verification email. You can use basic HTML (links, bold, etc.).', 'locker-system'); ?></p>
 
                 <input type="submit" name="save_settings" value="<?php esc_attr_e('Save Settings', 'locker-system'); ?>" class="button button-primary">
             </form>
