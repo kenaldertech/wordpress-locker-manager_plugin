@@ -20,12 +20,5 @@ A WordPress plugin to create and manage lockers with city selection, email confi
 - `[locker_form]` → Displays the form to create a new locker.
 - `[locker_list]` → Displays the locker listing (protected by login).
 
-## Example
-**Form (public page):**
-![Form Example](https://via.placeholder.com/600x300.png?text=Form+Example)
-
-**List (protected page):**
-![List Example](https://via.placeholder.com/600x300.png?text=List+Example)
-
 ## Author
 Developed by [kenaldertech](https://github.com/kenaldertech)
