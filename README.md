@@ -1,7 +1,7 @@
 # Locker Manager
 
 A WordPress plugin to create and manage lockers with city selection, email confirmation, and protected admin listing.
-
+   
 ## Features  
 - Locker number generation (starts at `100501` per city).
 - City selection: San Pedro Sula, Tegucigalpa, Other.
