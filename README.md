@@ -1,4 +1,4 @@
-# Locker Manager
+# Locker Manager 
 
 A WordPress plugin to create and manage lockers with city selection, email confirmation, and protected admin listing.
    
